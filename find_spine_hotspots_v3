@@ -1,0 +1,124 @@
+function hotspot_info = find_spine_hotspots_v3(tree, spine_type, window_size, spine_threshold, step_size)
+% find_spine_hotspots: 使用滑动窗口法找到树突棘高度密集的区域，并返回区域内的骨架节点。
+%
+% Dependencies:
+% TREES toolbox
+% function find_biological_branches
+%
+% 输入:
+%   tree:           TREES工具箱可识别的树结构体。
+%   spine_type:     代表树突棘的R类型值 (默认为4)。
+%   window_size:    滑动窗口的长度 (默认为5 µm)。
+%   spine_threshold: 判断为热点的树突棘数量阈值 (默认为 20)。
+%   step_size:      窗口每次滑动的步长 (默认为1 µm)。步长越小，分辨率越高，计算越慢。
+%
+% 输出:
+%   hotspot_info:   一个结构体数组，每个元素代表一个热点区域，包含以下字段:
+%                   .branch_id:     热点所在的分支段ID。
+%                   .hotspot_start: 热点区域的起始位置 (µm)。
+%                   .hotspot_end:   热点区域的结束位置 (µm)。
+%                   .spine_count:   在该区域内发现的树突棘数量。
+%                   .density:       该区域的树突棘密度 (spines/µm)。
+%                   .backbone_nodes_in_hotspot: 一个向量，包含构成该热点区域的所有骨架节点的索引。
+%                   .spine_ids_in_hotspot: 一个向量，包含构成该热点区域的所有棘节点的索引。
+
+% --- 1. 参数默认值 ---
+if nargin < 2, spine_type = 4; end
+if nargin < 3, window_size = 5; end
+if nargin < 4, spine_threshold = 20; end
+if nargin < 5, step_size = 1; end
+
+% --- 2. 准备工作 ---
+biological_sect = find_biological_branches(tree, spine_type);
+num_branches = size(biological_sect, 1);
+direct_parent_indices = idpar_tree(tree);
+all_path_lengths_from_root = Pvec_tree(tree, len_tree(tree));
+all_segment_lengths = len_tree(tree);
+parent_paths_matrix = ipar_tree(tree);
+
+
+spine_indices = find(tree.R == spine_type); 
+spine_attachment_points = direct_parent_indices(spine_indices);
+
+%  初始化输出结构体，增加新字段
+hotspot_info = struct('branch_id', {}, 'hotspot_start', {}, 'hotspot_end', {}, ...
+                      'spine_count', {}, 'density', {}, 'backbone_nodes_in_hotspot', {}, ...
+                      'spine_ids_in_hotspot', {}); 
+
+% --- 3. 遍历每个生物学分支 ---
+all_hotspot_backbone_nodes_collector = []; %储存可视化所需要的backbone node ID
+for i = 1:num_branches
+    start_node = biological_sect(i, 1);
+    end_node = biological_sect(i, 2);
+    
+    path_to_root = parent_paths_matrix(end_node, :);
+    path_to_root = path_to_root(path_to_root > 0);
+    start_idx_in_path = find(path_to_root == start_node);
+    if isempty(start_idx_in_path), continue; end
+    branch_nodes = fliplr(path_to_root(1:start_idx_in_path));
+    
+    if length(branch_nodes) < 2, branch_length = 0; else
+        branch_length = sum(all_segment_lengths(branch_nodes(2:end)));
+    end
+    
+    if branch_length < window_size, continue; end
+    
+    % --- 获取附着在该分支上的树突棘及其相对位置 ---
+    spines_on_this_branch_mask = ismember(spine_attachment_points, branch_nodes);
+    
+    % 不仅获取附着点，也获取这些棘本身的ID
+    spine_indices_on_branch = spine_indices(spines_on_this_branch_mask);
+    attachment_points_on_branch = spine_attachment_points(spines_on_this_branch_mask);
+    
+    if isempty(attachment_points_on_branch), continue; end
+    
+    path_start_node_metric_length = all_path_lengths_from_root(start_node);
+    spine_positions_on_branch = all_path_lengths_from_root(attachment_points_on_branch) - path_start_node_metric_length;
+    backbone_nodes_path_lengths_on_branch = all_path_lengths_from_root(branch_nodes) - path_start_node_metric_length;
+    
+    % --- 在当前分支上进行滑动窗口检测 ---
+    window_starts = 0:step_size:(branch_length - window_size);
+    
+    for w_start = window_starts
+        w_end = w_start + window_size;
+        
+        % 创建一个逻辑掩码，找出哪些位于分支上的棘落在了当前窗口内
+        spines_in_window_mask = (spine_positions_on_branch >= w_start & spine_positions_on_branch < w_end);
+        spine_count_in_window = sum(spines_in_window_mask);
+        
+        if spine_count_in_window >= spine_threshold
+            % --- 记录热点信息 ---
+            hotspot_data.branch_id = i;
+            hotspot_data.hotspot_start = w_start;
+            hotspot_data.hotspot_end = w_end;
+            hotspot_data.spine_count = spine_count_in_window;
+            hotspot_data.density = spine_count_in_window / window_size;
+
+            % 记录骨架节点
+            nodes_in_hotspot_mask = (backbone_nodes_path_lengths_on_branch >= w_start & backbone_nodes_path_lengths_on_branch <= w_end);
+            hotspot_backbone_nodes = branch_nodes(nodes_in_hotspot_mask);
+            hotspot_data.backbone_nodes_in_hotspot = hotspot_backbone_nodes';
+            
+            % 使用掩码筛选出热点区域内棘的ID并记录
+            hotspot_spine_ids = spine_indices_on_branch(spines_in_window_mask);
+            hotspot_data.spine_ids_in_hotspot = hotspot_spine_ids'; % 转置为行向量方便查看
+            
+            hotspot_info(end+1) = hotspot_data;
+
+            all_hotspot_backbone_nodes_collector = [all_hotspot_backbone_nodes_collector, hotspot_backbone_nodes];
+        end
+    end
+end
+disp(['分析完成。共找到 ', num2str(length(hotspot_info)), ' 个树突棘热点区域。']);
+
+
+% 可视化
+unique_hotspot_backbone_nodes = unique(all_hotspot_backbone_nodes_collector);
+figure;
+hold on; 
+plot_tree(tree, [0.8 0.8 0.8]);
+pointer_tree(tree, unique_hotspot_backbone_nodes, [], [0.6627, 0.2000, 0.1490]);
+title('Hotspot Region on Tree');
+hold off;
+
+end
