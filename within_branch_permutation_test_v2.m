@@ -1,6 +1,6 @@
 function results = within_branch_permutation_test_v2(tree, target_percentile, neighbor_percentile, n_permutations, distance_range, P_obs_external)
 % Input:
-% distance_range: [min, max] distancerange，default[4, 12]
+% distance_range: [min, max] distancerange，default[2, 14]
 
     %% Default parameters
     if nargin < 2 || isempty(target_percentile)
@@ -13,7 +13,7 @@ function results = within_branch_permutation_test_v2(tree, target_percentile, ne
         n_permutations = 1000;
     end
     if nargin < 5 || isempty(distance_range)
-        distance_range = [4, 12];  % default4-12 μm
+        distance_range = [2, 14];  % default2-14 μm
     end
     if nargin < 6
         P_obs_external = [];
