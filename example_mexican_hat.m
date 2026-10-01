@@ -12,7 +12,7 @@ HP_const = parallel.pool.Constant(HP);
 
 for j_idx = 1:num_params
     current_j = j_values(j_idx);
-    fprintf('处理参数 j = %.2f...\n', current_j);
+    fprintf('Processing parameter j = %.2f...\n', current_j);
     
     parfor i = 1:num_neurons
         tree = HP_const.Value.trees_rearranged_cell{i};
