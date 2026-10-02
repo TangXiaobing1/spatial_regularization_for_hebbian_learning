@@ -184,9 +184,13 @@ Calculates average pairwise Euclidean distance or average variance within cluste
 results = within_branch_permutation_test(tree, ...)
 
 results = within_branch_permutation_test_v2(tree, ...)
+
+run_pair_level_weight_class_permutations(...)
 ```
 
 These functions use permutation tests to compare observed spatial organization with random or within-branch null models.
+
+`run_pair_level_weight_class_permutations` tests pooled pair-level spine-volume classes around fixed observed large-synapse centers using branch-restricted and neuron-wide volume permutations.
 
 ### Test cluster homogeneity
 
